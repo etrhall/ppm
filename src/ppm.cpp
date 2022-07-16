@@ -404,7 +404,91 @@ public:
     }
     return(result);
   }
-  
+
+  std::vector<sequence_prediction> model_poly(List seq_list,
+                  List time_list,
+                  bool train[],
+                  bool predict[],
+                  bool return_distribution = true,
+                  bool return_entropy = true,
+                  bool generate = false)
+  {
+    int n_seq = seq_list.size();
+    if (n_seq != time_list.size()) {
+      stop("equal numbers of sequences and times must be given");
+    }
+
+    std::vector<sequence> seqs;
+    std::vector<NumericVector> times;
+    for (int i = 0; i < n_seq; i++) {
+      seqs.push_back(as<sequence>(seq_list[i]));
+      times.push_back(as<NumericVector>(time_list[i]));
+    }
+
+    // Vector of unique time points in all sequences
+    std::vector<double> unique_times;
+    for (int i = 0; i < n_seq; i++) {
+      unique_times.insert(unique_times.end(), times[i].begin(), times[i].end());
+    }
+    std::sort(unique_times.begin(), unique_times.end());
+    unique_times.erase(std::unique(unique_times.begin(), unique_times.end()), unique_times.end());
+    int n_unique_times = unique_times.size();
+
+    if (this->all_time.size() > 0 && unique_times.size() > 0 && unique_times[0] < this->all_time.back()) {
+      stop("a sequence may not begin before the previous sequence finished");
+    }
+
+    int event_at_time[n_unique_times][n_seq];
+    for (int i = 0; i < n_unique_times; i++) {
+      for (int j = 0; j < n_seq; j++) {
+        event_at_time[i][j] = std::distance(
+          std::find(times[j].begin(), times[j].end(), unique_times[i]),
+          times[j].begin()
+        );
+      }
+    }
+
+    std::vector<sequence_prediction> results;
+    for (int i = 0; i < n_seq; i++) {
+      sequence_prediction result(return_distribution,
+                                 return_entropy,
+                                 this->decay);
+      results.push_back(result);
+    }
+
+    for (int k = 0; k < n_unique_times; k++)
+    {
+      // Predict
+      for (int j = 0; j < n_seq; j++)
+      {
+        if (predict[j] && (event_at_time[k][j] < times[j].size()))
+        {
+          int i = event_at_time[k][j];
+          sequence context = (i < 1 || order_bound < 1) ? sequence() : subseq(seqs[j], std::max(0, i - order_bound), i - 1);
+          symbol_prediction pred = predict_symbol(seqs[j][i], context, i, times[j][i], generate);
+          results[j].insert(pred);
+        }
+      }
+
+      // Train
+      for (int j = 0; j < n_seq; j++)
+      {
+        if (train[j] && (event_at_time[k][j] < times[j].size()))
+        {
+          int i = event_at_time[k][j];
+          if (decay)
+            this->all_time.push_back(times[j][i]);
+          bool full_only = false;
+          for (int h = std::max(0, i - order_bound); h <= i; h++) {
+            full_only = this->insert(subseq(seqs[j], h, i), i, times[j][i], full_only);
+          }
+          num_observations++;
+        }
+      }
+    }
+    return (results);
+  }
+
   symbol_prediction predict_symbol(
       int symbol, 
       const sequence &context,
@@ -1356,6 +1440,7 @@ RCPP_EXPOSED_CLASS(record_decay)
          .field("debug_smooth", &ppm::debug_smooth)
          .field("alphabet_levels", &ppm::alphabet_levels)
          .method("model_seq", &ppm::model_seq)
+         .method("model_poly", &ppm::model_poly)
       // .method("insert", &ppm::insert)
          .method("get_weight", &ppm::get_weight)
       ;
