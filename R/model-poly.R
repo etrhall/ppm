@@ -62,7 +62,7 @@ model_poly <- function(model,
          "sequences/times.")
   }
 
-  if (any(lapply(seqs, is.character))) {
+  if (any(unlist(lapply(seqs, is.character)))) {
     stop("sequences in 'seqs' cannot be a character vector; ",
          "please provide a factor representation instead.")
   }
@@ -76,7 +76,7 @@ model_poly <- function(model,
   checkmate::qassert(predict, "B")
   checkmate::qassert(return_distribution, "B1")
   checkmate::qassert(return_entropy, "B1")
-  stopifnot(is.null(times) || all(lapply(times, is.numeric)))
+  stopifnot(is.null(times) || all(unlist(lapply(times, is.numeric))))
 
   for (seq in seqs) {
     if (is.factor(seq)
@@ -87,7 +87,7 @@ model_poly <- function(model,
     }
   }
 
-  if (any(unlist(lapply(times, (function(x) diff(x))) < 0))) {
+  if (any(unlist(lapply(times, (function(x) diff(x)))) < 0)) {
     stop("decreasing values of time are not permitted")
   }
 
@@ -99,16 +99,33 @@ model_poly <- function(model,
 
   if (length(predict) == 1) predict <- rep(predict, length(seqs))
 
-  if (!zero_indexed) seqs <- lapply(seqs, function(x) x - 1L)
+  if (!zero_indexed) seqs <- lapply(seqs, (function(x) x - 1L))
 
   res <- model$model_poly(
-    x = seqs,
-    times = times,
+    seq_list = seqs,
+    time_list = times,
     train = train,
     predict = predict,
     return_distribution = return_distribution,
-    return_entropy = return_entropy
+    return_entropy = return_entropy,
+    generate = FALSE
   )
+  dfs <- lapply(res, (function(x) x$as_tibble()))
 
-  res
+  if (!zero_indexed) {
+    for (df in dfs) {
+      df$symbol <- df$symbol + 1L
+    }
+  }
+
+  if (length(model$alphabet_levels) > 0) {
+    for (df in dfs) {
+      df$symbol <- factor(
+        model$alphabet_levels[df$symbol],
+        levels = model$alphabet_levels
+      )
+    }
+  }
+
+  dfs
 }

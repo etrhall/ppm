@@ -405,10 +405,10 @@ public:
     return(result);
   }
 
-  std::vector<sequence_prediction> model_poly(List seq_list,
+  List model_poly(List seq_list,
                   List time_list,
-                  bool train[],
-                  bool predict[],
+                  std::vector<bool> train,
+                  std::vector<bool> predict,
                   bool return_distribution = true,
                   bool return_entropy = true,
                   bool generate = false)
@@ -426,28 +426,35 @@ public:
     }
 
     // Vector of unique time points in all sequences
-    std::vector<double> unique_times;
+    NumericVector all_times;
     for (int i = 0; i < n_seq; i++) {
-      unique_times.insert(unique_times.end(), times[i].begin(), times[i].end());
+      for (int j = 0; j < times[i].size(); j++) {
+        all_times.push_back(times[i][j]);
+      }
     }
-    std::sort(unique_times.begin(), unique_times.end());
-    unique_times.erase(std::unique(unique_times.begin(), unique_times.end()), unique_times.end());
+    NumericVector unique_times = sort_unique(all_times);
     int n_unique_times = unique_times.size();
+
 
     if (this->all_time.size() > 0 && unique_times.size() > 0 && unique_times[0] < this->all_time.back()) {
       stop("a sequence may not begin before the previous sequence finished");
     }
 
-    int event_at_time[n_unique_times][n_seq];
+    // Vector of indices of when each time-point occurs in each sequence
+    std::vector<std::vector<int>> indices_at_time;
     for (int i = 0; i < n_unique_times; i++) {
+      indices_at_time.push_back(std::vector<int>());
       for (int j = 0; j < n_seq; j++) {
-        event_at_time[i][j] = std::distance(
-          std::find(times[j].begin(), times[j].end(), unique_times[i]),
-          times[j].begin()
+        indices_at_time[i].push_back(
+          std::distance(
+            times[j].begin(),
+            std::find(times[j].begin(), times[j].end(), unique_times[i])
+          )
         );
       }
     }
 
+    // Vector of results
     std::vector<sequence_prediction> results;
     for (int i = 0; i < n_seq; i++) {
       sequence_prediction result(return_distribution,
@@ -461,9 +468,9 @@ public:
       // Predict
       for (int j = 0; j < n_seq; j++)
       {
-        if (predict[j] && (event_at_time[k][j] < times[j].size()))
+        int i = indices_at_time[k][j];
+        if (predict[j] && (i < times[j].size()))
         {
-          int i = event_at_time[k][j];
           sequence context = (i < 1 || order_bound < 1) ? sequence() : subseq(seqs[j], std::max(0, i - order_bound), i - 1);
           symbol_prediction pred = predict_symbol(seqs[j][i], context, i, times[j][i], generate);
           results[j].insert(pred);
@@ -473,11 +480,10 @@ public:
       // Train
       for (int j = 0; j < n_seq; j++)
       {
-        if (train[j] && (event_at_time[k][j] < times[j].size()))
+        int i = indices_at_time[k][j];
+        if (train[j] && (i < times[j].size()))
         {
-          int i = event_at_time[k][j];
-          if (decay)
-            this->all_time.push_back(times[j][i]);
+          this->all_time.push_back(times[j][i]);
           bool full_only = false;
           for (int h = std::max(0, i - order_bound); h <= i; h++) {
             full_only = this->insert(subseq(seqs[j], h, i), i, times[j][i], full_only);
@@ -486,7 +492,9 @@ public:
         }
       }
     }
-    return (results);
+
+    List results_list = wrap(results);
+    return (results_list);
   }
 
   symbol_prediction predict_symbol(
