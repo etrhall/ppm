@@ -465,6 +465,8 @@ public:
 
     for (int k = 0; k < n_unique_times; k++)
     {
+      int pos_i = num_observations;
+
       // Predict
       for (int j = 0; j < n_seq; j++)
       {
@@ -472,7 +474,7 @@ public:
         if (predict[j] && (i < times[j].size()))
         {
           sequence context = (i < 1 || order_bound < 1) ? sequence() : subseq(seqs[j], std::max(0, i - order_bound), i - 1);
-          symbol_prediction pred = predict_symbol(seqs[j][i], context, i, times[j][i], generate);
+          symbol_prediction pred = predict_symbol(seqs[j][i], context, pos_i, times[j][i], generate);
           results[j].insert(pred);
         }
       }
@@ -486,7 +488,7 @@ public:
           this->all_time.push_back(times[j][i]);
           bool full_only = false;
           for (int h = std::max(0, i - order_bound); h <= i; h++) {
-            full_only = this->insert(subseq(seqs[j], h, i), i, times[j][i], full_only);
+            full_only = this->insert(subseq(seqs[j], h, i), pos_i, times[j][i], full_only);
           }
           num_observations++;
         }
