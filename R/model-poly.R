@@ -55,8 +55,9 @@ model_poly <- function(model,
                        predict = TRUE,
                        return_distribution = TRUE,
                        return_entropy = TRUE) {
-  if (!is.null(times)
-      && !identical(lapply(seqs, length), lapply(times, length))) {
+  seqs_lengths <- unlist(lapply(seqs, function(x) lapply(x, length)))
+  times_lengths <- unlist(lapply(times, function(x) lapply(x, length)))
+  if (!is.null(times) && !all(seqs_lengths == times_lengths)) {
     stop("if times are not NULL, equal numbers of sequences and times ",
          "must be given, with an equal number of items in respective ",
          "sequences/times.")
@@ -110,22 +111,22 @@ model_poly <- function(model,
     return_entropy = return_entropy,
     generate = FALSE
   )
-  dfs <- lapply(res, (function(x) x$as_tibble()))
+  df_list <- lapply(res, (function(x) x$as_tibble()))
 
   if (!zero_indexed) {
-    for (df in dfs) {
-      df$symbol <- df$symbol + 1L
+    for (i in seq_along(df_list)) {
+      df_list[[i]]$symbol <- df_list[[i]]$symbol + 1L
     }
   }
 
   if (length(model$alphabet_levels) > 0) {
-    for (df in dfs) {
-      df$symbol <- factor(
-        model$alphabet_levels[df$symbol],
+    for (i in seq_along(df_list)) {
+      df_list[[i]]$symbol <- factor(
+        model$alphabet_levels[df_list[[i]]$symbol],
         levels = model$alphabet_levels
       )
     }
   }
 
-  dfs
+  df_list
 }
